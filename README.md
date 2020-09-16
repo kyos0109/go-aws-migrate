@@ -8,6 +8,8 @@ Support Security Groups Include Managed prefix lists.
 
 Support Update(Revoke) Sync Security Groups.
 
+Support Route53.
+
 example config.yaml
 ```yaml
 Setting:
@@ -23,5 +25,5 @@ Setting:
     SecretKey: "SecretKey"
     Region: "ap-east-1"
     VPCID: "VPCID"
-    HostedZoneID: "Hosted Zone ID"
+    HostedZoneID: "Hosted Zone ID" // Optional, not exsits, auto create it.
 ```
