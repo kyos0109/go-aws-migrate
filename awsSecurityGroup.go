@@ -73,16 +73,19 @@ func SecurityGroupSyncGO(awsAccount *AWSAccount) {
 	var awssync AWSSync
 
 	awssync.perfixListMap = make(map[string]*PerfixList)
+	awssync.sourceSGLists = GetSGList(&awsAccount.Source)
+	awssync.tagsConfig = awsAccount.Tags
 
-	if len(sourceSGID) > 0 {
-		awssync.sourceSGLists = GetFilterSGListByIds(&awsAccount.Source, sourceSGID)
-		awssync.GetPerfixLists(&awsAccount.Source)
-	} else {
-		awssync.sourceSGLists = GetSGList(&awsAccount.Source)
-		awssync.GetPerfixLists(&awsAccount.Source)
+	awssync.GetPerfixLists(&awsAccount.Source)
+
+	switch {
+	case updateMode && len(sourceSGID) > 0:
+		awssync.UpdateSGList(&awsAccount.Destination, sourceSGID)
+	case updateMode:
+		awssync.UpdateSGList(&awsAccount.Destination)
+	default:
+		awssync.CreateAndSyncSGList(&awsAccount.Destination, &awsAccount.DryRun)
 	}
-
-	awssync.CreateAndSyncSGList(&awsAccount.Destination, &awsAccount.DryRun)
 }
 
 // GetFilterSGListByNames ...
@@ -215,7 +218,7 @@ func (awssync *AWSSync) createPerfixList(svc *ec2.Client) {
 			Entries:           PerfixListAddr,
 			PrefixListName:    v.ManagedPrefixList.PrefixListName,
 			MaxEntries:        v.ManagedPrefixList.MaxEntries,
-			TagSpecifications: setSGTags(tags, "prefix-list"),
+			TagSpecifications: awssync.setSGTags(tags, "prefix-list"),
 		})
 		result, err := req.Send(context.Background())
 		if err != nil {
@@ -241,17 +244,7 @@ func convertAddPerfixList(plist []ec2.PrefixListEntry) []ec2.AddPrefixListEntry 
 	return newPlist
 }
 
-func deletSGDefaultValue(sgList []ec2.SecurityGroup) []ec2.SecurityGroup {
-	// delete non vpc id default sg from source
-	for i, sg := range sgList {
-		if aws.StringValue(sg.GroupName) == "default" && aws.StringValue(sg.VpcId) == "" {
-			log.Printf("This Source Security Group: %v(%v), Not Found VPC ID, Ignore SYNC.", *sg.GroupName, *sg.GroupId)
-			copy(sgList[i:], sgList[i+1:])
-			sgList[len(sgList)-1] = ec2.SecurityGroup{}
-			sgList = sgList[:len(sgList)-1]
-		}
-	}
-
+func addNewUGPMap(sgList []ec2.SecurityGroup) []ec2.SecurityGroup {
 	// delete Security Group include Security Group ID, and copy to new map.
 	for i, sg := range sgList {
 		if len(sg.IpPermissions) == 0 {
@@ -289,6 +282,20 @@ func deletSGDefaultValue(sgList []ec2.SecurityGroup) []ec2.SecurityGroup {
 
 		sgList[i].IpPermissions = ippSlice
 		sgList[i].IpPermissionsEgress = ippeSlice
+	}
+
+	return sgList
+}
+
+func removeSGDefaultValue(sgList []ec2.SecurityGroup) []ec2.SecurityGroup {
+	// delete non vpc id default sg from source
+	for i, sg := range sgList {
+		if aws.StringValue(sg.GroupName) == "default" && aws.StringValue(sg.VpcId) == "" {
+			log.Printf("This Source Security Group: %v(%v), Not Found VPC ID, Ignore SYNC.", *sg.GroupName, *sg.GroupId)
+			copy(sgList[i:], sgList[i+1:])
+			sgList[len(sgList)-1] = ec2.SecurityGroup{}
+			sgList = sgList[:len(sgList)-1]
+		}
 	}
 
 	return sgList
@@ -340,23 +347,36 @@ func replaceGroupID(ippMap BuildSGMapType) BuildSGMapType {
 
 func (awssync *AWSSync) replacePerfixListID(sgList []ec2.SecurityGroup) []ec2.SecurityGroup {
 	for _, sg := range sgList {
-		for _, ipp := range sg.IpPermissions {
-			for _, plist := range ipp.PrefixListIds {
-				plist.PrefixListId = awssync.perfixListMap[*plist.PrefixListId].newPerfixListID
+		for ii, ipp := range sg.IpPermissions {
+			if len(ipp.PrefixListIds) > 0 {
+				prefixListIDs := []ec2.PrefixListId{}
+				for _, plist := range ipp.PrefixListIds {
+					plist.PrefixListId = awssync.perfixListMap[*plist.PrefixListId].newPerfixListID
+					prefixListIDs = append(prefixListIDs, plist)
+				}
+				sg.IpPermissions[ii].PrefixListIds = prefixListIDs
 			}
 		}
 	}
 	return sgList
 }
 
-func setSGTags(tags []ec2.Tag, resourceType ec2.ResourceType) []ec2.TagSpecification {
+func (awssync *AWSSync) setSGTags(tags []ec2.Tag, resourceType ec2.ResourceType) []ec2.TagSpecification {
 	tagList := &ec2.TagSpecification{}
 	timeTag := &ec2.Tag{}
 
 	timeTag.Key = aws.String("CreateAt")
 	timeTag.Value = aws.String(time.Now().String())
-
 	tags = append(tags, *timeTag)
+
+	configTags := make([]ec2.Tag, len(awssync.tagsConfig))
+	for i, v := range awssync.tagsConfig {
+		configTags[i] = ec2.Tag{
+			Key:   aws.String(v.Key),
+			Value: aws.String(v.Value),
+		}
+	}
+	tags = append(tags, configTags...)
 
 	if len(tags) > 0 {
 		tagList = &ec2.TagSpecification{
@@ -432,16 +452,104 @@ func updateSG(account *awsAuth, groupName string) *string {
 	return existSG.GroupId
 }
 
+func findIPPermissionsBySGID(sgList []ec2.SecurityGroup, groupID *string) (ipps []ec2.IpPermission, ippes []ec2.IpPermission) {
+	for _, sg := range sgList {
+		if aws.StringValue(sg.GroupId) == aws.StringValue(groupID) {
+			return sg.IpPermissions, sg.IpPermissionsEgress
+		}
+	}
+	return nil, nil
+}
+
+// UpdateSGList ...
+func (awssync *AWSSync) UpdateSGList(account *awsAuth, srcSID ...string) {
+	svc := newSVC(account)
+
+	dstSGLIst := GetSGList(account)
+
+	awssync.createPerfixList(svc)
+
+	newSrcSGList := removeSGDefaultValue(awssync.sourceSGLists)
+	newSrcSGList = addNewUGPMap(newSrcSGList)
+
+	for _, sg := range newSrcSGList {
+		sgIDMameMap[*sg.GroupId] = *sg.GroupName
+	}
+
+	for _, sg := range dstSGLIst {
+		newSGNameIDMap[*sg.GroupName] = *sg.GroupId
+	}
+
+	newSrcSGList = awssync.replacePerfixListID(newSrcSGList)
+
+	for _, sg := range newSrcSGList {
+		RevokGroupID := newSGNameIDMap[*sg.GroupName]
+
+		ippsByIP, ippesByIP := findIPPermissionsBySGID(dstSGLIst, &RevokGroupID)
+
+		if len(ippsByIP) > 0 {
+			req := svc.RevokeSecurityGroupIngressRequest(&ec2.RevokeSecurityGroupIngressInput{
+				GroupId:       aws.String(RevokGroupID),
+				IpPermissions: ippsByIP,
+			})
+			_, err := req.Send(context.Background())
+			if err != nil {
+				exitErrorf("Unable to revoke security group %q Ingress, %v", &RevokGroupID, err)
+			}
+			if len(sg.IpPermissions) > 0 {
+				reqAuthor := svc.AuthorizeSecurityGroupIngressRequest(&ec2.AuthorizeSecurityGroupIngressInput{
+					GroupId:       aws.String(RevokGroupID),
+					IpPermissions: sg.IpPermissions,
+				})
+				_, err = reqAuthor.Send(context.Background())
+				if err != nil {
+					exitErrorf("Unable to set security group %q ingress, %v", *sg.GroupName, err)
+				}
+			}
+		} else {
+			log.Printf("Unable to revoke security group %q, not found ingress rules from destination", RevokGroupID)
+		}
+
+		if len(ippesByIP) > 0 {
+			req := svc.RevokeSecurityGroupEgressRequest(&ec2.RevokeSecurityGroupEgressInput{
+				GroupId:       aws.String(RevokGroupID),
+				IpPermissions: ippesByIP,
+			})
+			_, err := req.Send(context.Background())
+			if err != nil {
+				exitErrorf("Unable to revoke security group %q Egress, %v", &RevokGroupID, err)
+			}
+			if len(sg.IpPermissionsEgress) > 0 {
+				reqAuthor := svc.AuthorizeSecurityGroupEgressRequest(&ec2.AuthorizeSecurityGroupEgressInput{
+					GroupId:       aws.String(RevokGroupID),
+					IpPermissions: sg.IpPermissionsEgress,
+				})
+				_, err = reqAuthor.Send(context.Background())
+				if err != nil {
+					exitErrorf("Unable to set security group %q Egress, %v", *sg.GroupName, err)
+				}
+			}
+		} else {
+			log.Printf("Unable to revoke security group %q, not found egress rules from destination", RevokGroupID)
+		}
+
+		log.Printf("Successfully update security group %q", RevokGroupID)
+	}
+	appendSGUGPRule(svc)
+
+	log.Print("Update Done.")
+}
+
 // CreateAndSyncSGList ...
 func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 	svc := newSVC(account)
 
 	defaultSGID := GetFilterSGListByNames(account, sgDefaultName)[0]
 
-	newSrcSGList := deletSGDefaultValue(awssync.sourceSGLists)
-
 	awssync.createPerfixList(svc)
 
+	newSrcSGList := removeSGDefaultValue(awssync.sourceSGLists)
+	newSrcSGList = addNewUGPMap(newSrcSGList)
 	newSrcSGList = awssync.replacePerfixListID(newSrcSGList)
 
 	for _, sg := range newSrcSGList {
@@ -454,7 +562,7 @@ func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 			GroupName:         sg.GroupName,
 			Description:       sg.Description,
 			VpcId:             aws.String(account.VIPCID),
-			TagSpecifications: setSGTags(sg.Tags, ec2.ResourceTypeSecurityGroup),
+			TagSpecifications: awssync.setSGTags(sg.Tags, ec2.ResourceTypeSecurityGroup),
 		})
 		createRes, err := req.Send(context.Background())
 		if err != nil {
@@ -463,19 +571,12 @@ func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 				case "InvalidVpcID.NotFound":
 					exitErrorf("Unable to find VPC with ID %q.", account.VIPCID)
 				case "InvalidGroup.Duplicate":
-					if updateMode {
-						resGroupID = updateSG(account, *sg.GroupName)
-						break
-					}
 					exitErrorf("Security group %q already exists.", *sg.GroupName)
 				case "DryRunOperation":
 					exitErrorf("DryRunOperation to create security group %q, %v", *sg.GroupName, err)
 				case "InvalidParameterValue":
 					if aws.StringValue(sg.GroupName) == sgDefaultName {
 						log.Print("Found default group, switch id.")
-						if updateMode {
-							updateSG(account, sgDefaultName)
-						}
 						resGroupID = defaultSGID.GroupId
 						break
 					}
@@ -489,41 +590,37 @@ func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 		}
 
 		// clean create Security Group default value
-		if !updateMode {
-			reqRevoke := svc.RevokeSecurityGroupEgressRequest(&ec2.RevokeSecurityGroupEgressInput{
-				GroupId: resGroupID,
-				IpPermissions: []ec2.IpPermission{
-					{
-						FromPort:   aws.Int64(-1),
-						IpProtocol: aws.String("-1"),
-						IpRanges: []ec2.IpRange{
-							{
-								CidrIp: aws.String("0.0.0.0/0"),
-							},
+		reqRevoke := svc.RevokeSecurityGroupEgressRequest(&ec2.RevokeSecurityGroupEgressInput{
+			GroupId: resGroupID,
+			IpPermissions: []ec2.IpPermission{
+				{
+					FromPort:   aws.Int64(-1),
+					IpProtocol: aws.String("-1"),
+					IpRanges: []ec2.IpRange{
+						{
+							CidrIp: aws.String("0.0.0.0/0"),
 						},
 					},
 				},
-			})
-			_, err = reqRevoke.Send(context.Background())
-			if err != nil {
-				exitErrorf("Revoke Default Security Group Rule Egress Error", err)
-			}
+			},
+		})
+		_, err = reqRevoke.Send(context.Background())
+		if err != nil {
+			exitErrorf("Revoke Default Security Group Rule Egress Error", err)
 		}
 
 		// all new security group id
 		newSGNameIDMap[*sg.GroupName] = *resGroupID
 
-		if !updateMode {
-			log.Printf("Created security group %s(%s) with VPC %s.\n",
-				aws.StringValue(sg.GroupName), aws.StringValue(resGroupID), account.VIPCID)
-		}
+		log.Printf("Created security group %s(%s) with VPC %s.\n",
+			aws.StringValue(sg.GroupName), aws.StringValue(resGroupID), account.VIPCID)
 
 		if len(sg.IpPermissions) > 0 {
-			req := svc.AuthorizeSecurityGroupIngressRequest(&ec2.AuthorizeSecurityGroupIngressInput{
+			reqAuth := svc.AuthorizeSecurityGroupIngressRequest(&ec2.AuthorizeSecurityGroupIngressInput{
 				GroupId:       resGroupID,
-				IpPermissions: setSelfSecurityGroupID(sg.IpPermissions, resGroupID),
+				IpPermissions: sg.IpPermissions,
 			})
-			_, err := req.Send(context.Background())
+			_, err := reqAuth.Send(context.Background())
 			if err != nil {
 				exitErrorf("Unable to set security group %q ingress, %v", *sg.GroupName, err)
 			}
@@ -532,7 +629,7 @@ func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 		if len(sg.IpPermissionsEgress) > 0 {
 			req := svc.AuthorizeSecurityGroupEgressRequest(&ec2.AuthorizeSecurityGroupEgressInput{
 				GroupId:       resGroupID,
-				IpPermissions: setSelfSecurityGroupID(sg.IpPermissionsEgress, resGroupID),
+				IpPermissions: sg.IpPermissionsEgress,
 			})
 			_, err := req.Send(context.Background())
 			if err != nil {
@@ -543,16 +640,19 @@ func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 
 	appendSGUGPRule(svc)
 
-	log.Println("Successfully set security group ingress")
+	log.Print("Create Done.")
 }
 
 func setSelfSecurityGroupID(ips []ec2.IpPermission, groupID *string) []ec2.IpPermission {
-	for _, ipp := range ips {
+	for i, ipp := range ips {
+		ugps := []ec2.UserIdGroupPair{}
 		for _, ugp := range ipp.UserIdGroupPairs {
 			if aws.StringValue(ugp.GroupId) == sgSelf {
 				ugp.GroupId = groupID
+				ugps = append(ugps, ugp)
 			}
 		}
+		ips[i].UserIdGroupPairs = ugps
 	}
 	return ips
 }

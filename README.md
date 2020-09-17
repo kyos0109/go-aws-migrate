@@ -1,6 +1,6 @@
-# go-migrate-security-group
+# go-aws-migrate
 
-The command copies the aws security group to another aws account.
+The command migrate the aws some services to another aws account.
 
 Support Security Groups Include Security Group ID.
 
@@ -14,6 +14,11 @@ example config.yaml
 ```yaml
 Setting:
   DryRun: false
+  Tags:
+    - Key: "Project"
+      Value: "Demo"
+    - Key: "Creator"
+      Value: "aws-sdk-go-v2"
   Source:
     AccessKey: "AccessKey"
     SecretKey: "SecretKey"

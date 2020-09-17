@@ -105,14 +105,14 @@ func (r53sync *route53Sync) createHostedZone(awsAuth *awsAuth) *route53.HostedZo
 	return result.HostedZone
 }
 
-func (r53sync *route53Sync) createRecord(account *awsAuth) {
+func (r53sync *route53Sync) createRecord(account *awsAuth, r53Action route53.ChangeAction) {
 	svc := newRoute53SVC(account)
 
 	rrChangeList := []route53.Change{}
 
 	for _, v := range r53sync.srcRecordListRes.ResourceRecordSets {
 		rrChange := route53.Change{
-			Action: route53.ChangeActionCreate,
+			Action: r53Action,
 			ResourceRecordSet: &route53.ResourceRecordSet{
 				HealthCheckId:           v.HealthCheckId,
 				TrafficPolicyInstanceId: v.TrafficPolicyInstanceId,
@@ -179,10 +179,11 @@ func Route53SyncGO(awsAccount *AWSAccount) {
 
 	if len(awsAccount.Destination.HostedZoneID) > 0 {
 		_, r53sync.dstHostedZone = getDNSRecordList(&awsAccount.Destination)
+		r53sync.createRecord(&awsAccount.Destination, route53.ChangeActionUpsert)
 	} else {
 		log.Println("Not Host Zone, Ceate It.")
 		r53sync.dstHostedZone = r53sync.createHostedZone(&awsAccount.Destination)
-		r53sync.createRecord(&awsAccount.Destination)
+		r53sync.createRecord(&awsAccount.Destination, route53.ChangeActionCreate)
 	}
 
 	log.Print("Done.")

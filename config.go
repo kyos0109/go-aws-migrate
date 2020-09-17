@@ -12,11 +12,18 @@ type YamlConfig struct {
 	Setting AWSAccount `yaml:"Setting"`
 }
 
+// Tag ...
+type Tag struct {
+	Key   string `yaml:"Key"`
+	Value string `yaml:"Value"`
+}
+
 // AWSAccount ...
 type AWSAccount struct {
 	Source      awsAuth `yaml:"Source"`
 	Destination awsAuth `yaml:"Destination"`
 	DryRun      bool    `yaml:"DryRun"`
+	Tags        []Tag   `yaml:"Tags"`
 }
 
 type awsAuth struct {

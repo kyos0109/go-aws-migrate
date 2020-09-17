@@ -16,6 +16,7 @@ import (
 type AWSSync struct {
 	sourceSGLists []ec2.SecurityGroup
 	perfixListMap map[string]*PerfixList
+	tagsConfig    []Tag
 }
 
 var (
