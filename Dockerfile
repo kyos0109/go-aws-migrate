@@ -10,8 +10,8 @@ RUN go install -v ./...
 
 FROM gcr.io/distroless/base
 
-COPY --from=base /go/bin/go-migrate-security-group /usr/bin/go-migrate-security-group
+COPY --from=base /go/bin/go-aws-migrate /usr/bin/go-aws-migrate
 
 WORKDIR /app
 
-ENTRYPOINT ["go-migrate-security-group"]
+ENTRYPOINT ["go-aws-migrate"]
