@@ -1,4 +1,4 @@
-FROM golang:1.14-stretch AS base
+FROM golang:1.15-buster AS base
 
 WORKDIR /go/src/app
 
