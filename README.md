@@ -2,15 +2,40 @@
 
 The command migrate the aws some services to another aws account.
 
-Support Security Groups Include Security Group ID.
+* Support Security Groups Include Security Group ID.
 
-Support Security Groups Include Managed prefix lists.
+* Support Security Groups Include Managed prefix lists.
 
-Support Update(Revoke) Sync Security Groups.
+* Support Update(Revoke) Sync Security Groups.
 
-Support Route53.
+* Support Security Groups Export.
 
-example config.yaml
+* Support Security Groups Resotre (plan).
+
+* Support Route53.
+
+
+# Command
+```bash
+NAME:
+   AWS Migrate Tools - Command Line
+
+USAGE:
+   go-aws-migrate [global options] command [command options] [arguments...] 
+
+COMMANDS:
+   Route53, r53       Route53 Copy
+   SecurityGroup, sg  Security Groups Sync
+   help, h            Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --config FILE, -c FILE  Load configuration from FILE (default: "config.yaml")
+   --help, -h              show help (default: false)
+   --version, -v           print the version (default: false)
+```
+
+
+# config.yaml
 ```yaml
 Setting:
   DryRun: false

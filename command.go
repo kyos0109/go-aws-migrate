@@ -28,8 +28,9 @@ var (
 // CommnadRun ...
 func CommnadRun() {
 	app := &cli.App{
-		Name:    "aws migrate tools",
-		Version: "0.3",
+		Name:    "AWS Migrate Tools",
+		Version: "0.6",
+		Usage:   "Command Line",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
@@ -42,7 +43,7 @@ func CommnadRun() {
 			{
 				Name:    "SecurityGroup",
 				Aliases: []string{"sg"},
-				Usage:   "Security Groups Sync",
+				Usage:   "Security Groups Migrate",
 				Action:  handelSG,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
@@ -69,7 +70,12 @@ func CommnadRun() {
 					&cli.StringFlag{
 						Name:    "output",
 						Aliases: []string{"o"},
-						Usage:   "Set File Location.",
+						Usage:   "Output File Location.",
+					},
+					&cli.StringFlag{
+						Name:    "file",
+						Aliases: []string{"f"},
+						Usage:   "Restore File Location.",
 					},
 					&cli.BoolFlag{
 						Name:   "src-restore",
@@ -86,7 +92,7 @@ func CommnadRun() {
 			{
 				Name:    "Route53",
 				Aliases: []string{"r53"},
-				Usage:   "Route53 Copy",
+				Usage:   "Route53 Migrate",
 				Action:  handelR53,
 			},
 		},
@@ -132,17 +138,20 @@ func handelSG(c *cli.Context) error {
 		ExportSecurityGroupRule(&yamlConfig.Setting.Source, c.String("output"))
 	case c.Bool("dst-export"):
 		ExportSecurityGroupRule(&yamlConfig.Setting.Destination, c.String("output"))
-	case c.Bool("src-restore"), c.Bool("dst-restore"):
-		log.Print("Bye")
-		os.Exit(0)
+	case c.Bool("src-restore"):
+		AlertRestoreMessage()
+		RestoreSecurityGroupRule(&yamlConfig.Setting.Source, c.String("file"))
+	case c.Bool("dst-restore"):
+		AlertRestoreMessage()
+		RestoreSecurityGroupRule(&yamlConfig.Setting.Destination, c.String("file"))
 	case updateMode:
 		UpdateModeGo()
 		SecurityGroupSyncGO(&yamlConfig.Setting)
 	case c.Bool("DontTouchThisButton"):
 		CleanSecurityGroupRule(&yamlConfig.Setting.Destination)
 	default:
-		fmt.Println("Create Mode")
-		// SecurityGroupSyncGO(&yamlConfig.Setting)
+		AlertCreateMessage()
+		SecurityGroupSyncGO(&yamlConfig.Setting)
 	}
 
 	return nil
