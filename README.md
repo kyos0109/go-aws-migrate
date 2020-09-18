@@ -30,5 +30,5 @@ Setting:
     SecretKey: "SecretKey"
     Region: "ap-east-1"
     VPCID: "VPCID"
-    HostedZoneID: "Hosted Zone ID" // Optional, not exsits, auto create it.
+    HostedZoneID: "Hosted Zone ID" # Optional, not exsits, auto create it.
 ```
