@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -86,6 +89,49 @@ func SecurityGroupSyncGO(awsAccount *AWSAccount) {
 	default:
 		awssync.CreateAndSyncSGList(&awsAccount.Destination, &awsAccount.DryRun)
 	}
+}
+
+// ExportSecurityGroupRule ...
+func ExportSecurityGroupRule(account *awsAuth, filePath string) {
+	fileName := "SecurityGroup-" + time.Now().Format("20060102150405") + ".json"
+
+	if len(filePath) > 0 {
+		filePath = filepath.Clean(filePath)
+
+		var splitWord string
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			splitWord = `/`
+		case "windows":
+			splitWord = `\`
+		default:
+			splitWord = `/`
+		}
+
+		filePath = filePath + splitWord
+	}
+
+	file, err := os.OpenFile(filePath+fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	sgList := GetSGList(account)
+
+	j, err := json.Marshal(sgList)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+	_, err = file.Write(j)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+	log.Printf("Output File: %s, Export Done.", filePath+fileName)
 }
 
 // GetFilterSGListByNames ...
@@ -701,7 +747,6 @@ func CleanSecurityGroupRule(account *awsAuth) {
 		}
 	}
 	log.Print("Done.")
-	os.Exit(0)
 }
 
 func exitErrorf(msg string, args ...interface{}) {

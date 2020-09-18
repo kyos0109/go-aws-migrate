@@ -56,7 +56,30 @@ func CommnadRun() {
 					},
 					&cli.StringFlag{
 						Name:  "sid",
-						Usage: "Just SYNC This Security Group ID",
+						Usage: "Just SYNC This Security Group ID (Experiment).",
+					},
+					&cli.BoolFlag{
+						Name:  "src-export",
+						Usage: "Export Source Security Group To File.",
+					},
+					&cli.BoolFlag{
+						Name:  "dst-export",
+						Usage: "Export Destination Security Group To File.",
+					},
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Set File Location.",
+					},
+					&cli.BoolFlag{
+						Name:   "src-restore",
+						Usage:  "Restore Source Security Group From File.",
+						Hidden: true,
+					},
+					&cli.BoolFlag{
+						Name:   "dst-restore",
+						Usage:  "Restore Destination Security Group From File.",
+						Hidden: true,
 					},
 				},
 			},
@@ -105,15 +128,22 @@ func handelSG(c *cli.Context) error {
 	sourceSGID = c.String("sid")
 
 	switch {
+	case c.Bool("src-export"):
+		ExportSecurityGroupRule(&yamlConfig.Setting.Source, c.String("output"))
+	case c.Bool("dst-export"):
+		ExportSecurityGroupRule(&yamlConfig.Setting.Destination, c.String("output"))
+	case c.Bool("src-restore"), c.Bool("dst-restore"):
+		log.Print("Bye")
+		os.Exit(0)
 	case updateMode:
 		UpdateModeGo()
+		SecurityGroupSyncGO(&yamlConfig.Setting)
 	case c.Bool("DontTouchThisButton"):
 		CleanSecurityGroupRule(&yamlConfig.Setting.Destination)
 	default:
 		fmt.Println("Create Mode")
+		// SecurityGroupSyncGO(&yamlConfig.Setting)
 	}
-
-	SecurityGroupSyncGO(&yamlConfig.Setting)
 
 	return nil
 }
