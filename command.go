@@ -95,6 +95,18 @@ func CommnadRun() {
 				Usage:   "Route53 Migrate",
 				Action:  handelR53,
 			},
+			{
+				Name:    "VPC",
+				Aliases: []string{"vpc"},
+				Usage:   "VPC Migrate",
+				Action:  handelVPC,
+			},
+			{
+				Name:    "Subnet",
+				Aliases: []string{"sub"},
+				Usage:   "Subnet Migrate",
+				Action:  handelSubnet,
+			},
 		},
 	}
 
@@ -163,7 +175,50 @@ func handelR53(c *cli.Context) error {
 		return err
 	}
 
+	cc := askForConfirmation("Do you really want to do it ??")
+
+	if !cc {
+		fmt.Println("Bye...")
+		os.Exit(0)
+	}
+
 	Route53SyncGO(&yamlConfig.Setting)
+
+	return nil
+}
+
+func handelVPC(c *cli.Context) error {
+	err := getYamlConfig(c.String("config"))
+	if err != nil {
+		return err
+	}
+
+	cc := askForConfirmation("Do you really want to do it ??")
+
+	if !cc {
+		fmt.Println("Bye...")
+		os.Exit(0)
+	}
+
+	VPCSyncGO(&yamlConfig.Setting)
+
+	return nil
+}
+
+func handelSubnet(c *cli.Context) error {
+	err := getYamlConfig(c.String("config"))
+	if err != nil {
+		return err
+	}
+
+	cc := askForConfirmation("Do you really want to do it ??")
+
+	if !cc {
+		fmt.Println("Bye...")
+		os.Exit(0)
+	}
+
+	SubnetSyncGO(&yamlConfig.Setting)
 
 	return nil
 }
