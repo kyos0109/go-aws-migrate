@@ -134,9 +134,8 @@ func ExportSecurityGroupRule(account *awsAuth, filePath string, tf bool, tags *[
 			log.Fatalln(err)
 			return
 		}
+		log.Printf("Output File: %s, Export Done.", filePath+fileName)
 	}
-
-	log.Printf("Output File: %s, Export Done.", filePath+fileName)
 }
 
 // RestoreSecurityGroupRule ...

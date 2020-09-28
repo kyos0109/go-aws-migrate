@@ -90,7 +90,7 @@ func CommnadRun() {
 					&cli.BoolFlag{
 						Name:    "terraform-export",
 						Aliases: []string{"tf"},
-						Usage:   "Export terraform file, has to be used with export args.",
+						Usage:   "Export terraform to stdout, has to be used with export args.",
 					},
 					&cli.BoolFlag{
 						Name:  "diff",
