@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -95,6 +96,11 @@ func SecurityGroupSyncGO(awsAccount *AWSAccount) {
 
 // ExportSecurityGroupRule ...
 func ExportSecurityGroupRule(account *awsAuth, filePath string, tf bool, tags *[]Tag) {
+	var (
+		err  error
+		buff []byte
+	)
+
 	fileName := "SecurityGroup-" + time.Now().Format("20060102150405")
 
 	if tf {
@@ -120,22 +126,28 @@ func ExportSecurityGroupRule(account *awsAuth, filePath string, tf bool, tags *[
 	}
 
 	sgList := GetSGList(account)
-	if tf {
-		convertTf(sgList, tags)
-	} else {
-		j, err := json.Marshal(sgList)
-		if err != nil {
-			log.Fatalln(err)
-			return
-		}
 
-		err = ioutil.WriteFile(filePath+fileName, j, 0644)
+	if tf {
+		buff, err = ioutil.ReadAll(convertTf(sgList, tags))
 		if err != nil {
 			log.Fatalln(err)
 			return
 		}
-		log.Printf("Output File: %s, Export Done.", filePath+fileName)
+	} else {
+		buff, err = json.Marshal(sgList)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
 	}
+
+	err = ioutil.WriteFile(filePath+fileName, buff, 0644)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+	log.Printf("Output File: %s, Export Done.", filePath+fileName)
 }
 
 // RestoreSecurityGroupRule ...
@@ -795,7 +807,7 @@ func DiffSecurityGroup(awsAccount *AWSAccount) {
 
 }
 
-func convertTf(sgList []ec2.SecurityGroup, tags *[]Tag) {
+func convertTf(sgList []ec2.SecurityGroup, tags *[]Tag) *bytes.Buffer {
 	funcMap := template.FuncMap{
 		"now": time.Now,
 		"customTags": func() *[]Tag {
@@ -807,12 +819,17 @@ func convertTf(sgList []ec2.SecurityGroup, tags *[]Tag) {
 	if err != nil {
 		log.Fatalf("parsing: %s", err)
 	}
-	for _, sg := range sgList {
-		err := tmpl.Execute(os.Stdout, sg)
+	buf := &bytes.Buffer{}
+	for i, sg := range sgList {
+		if i > 0 {
+			buf.WriteString("\n")
+		}
+		err := tmpl.Execute(buf, sg)
 		if err != nil {
 			log.Fatalf("execution: %s", err)
 		}
-		fmt.Println(``)
-		fmt.Println(``)
+		buf.WriteString("\n")
 	}
+
+	return buf
 }
