@@ -12,6 +12,8 @@ The command migrate the aws some services to another aws account.
 
 * Support Security Groups Resotre (plan).
 
+* Support Security Groups Export Terraform (UnSupported PrefixList [#13986](https://github.com/terraform-providers/terraform-provider-aws/issues/13986 target="_blank"))
+
 * Support Route53.
 
 

@@ -809,7 +809,6 @@ func convertTf(sgList []ec2.SecurityGroup, tags *[]Tag) {
 		log.Fatalf("parsing: %s", err)
 	}
 	for _, sg := range sgList {
-		fmt.Println(sg)
 		err := tmpl.Execute(os.Stdout, sg)
 		if err != nil {
 			log.Fatalf("execution: %s", err)
