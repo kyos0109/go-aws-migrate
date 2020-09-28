@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"text/template"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -93,8 +94,14 @@ func SecurityGroupSyncGO(awsAccount *AWSAccount) {
 }
 
 // ExportSecurityGroupRule ...
-func ExportSecurityGroupRule(account *awsAuth, filePath string) {
-	fileName := "SecurityGroup-" + time.Now().Format("20060102150405") + ".json"
+func ExportSecurityGroupRule(account *awsAuth, filePath string, tf bool, tags *[]Tag) {
+	fileName := "SecurityGroup-" + time.Now().Format("20060102150405")
+
+	if tf {
+		fileName = fileName + ".tf"
+	} else {
+		fileName = fileName + ".json"
+	}
 
 	if len(filePath) > 0 {
 		filePath = filepath.Clean(filePath)
@@ -113,17 +120,20 @@ func ExportSecurityGroupRule(account *awsAuth, filePath string) {
 	}
 
 	sgList := GetSGList(account)
+	if tf {
+		convertTf(sgList, tags)
+	} else {
+		j, err := json.Marshal(sgList)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
 
-	j, err := json.Marshal(sgList)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
-
-	err = ioutil.WriteFile(filePath+fileName, j, 0644)
-	if err != nil {
-		log.Fatalln(err)
-		return
+		err = ioutil.WriteFile(filePath+fileName, j, 0644)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
 	}
 
 	log.Printf("Output File: %s, Export Done.", filePath+fileName)
@@ -539,38 +549,6 @@ func appendSGUGPRule(svc *ec2.Client) {
 	}
 }
 
-// func updateSG(account *awsAuth, groupName string) *string {
-// 	svc := newSVC(account)
-
-// 	existSG := GetFilterSGListByNames(account, groupName)[0]
-
-// 	if len(existSG.IpPermissions) > 0 {
-// 		req := svc.RevokeSecurityGroupIngressRequest(&ec2.RevokeSecurityGroupIngressInput{
-// 			GroupId:       existSG.GroupId,
-// 			IpPermissions: existSG.IpPermissions,
-// 		})
-// 		_, err := req.Send(context.Background())
-// 		if err != nil {
-// 			exitErrorf("Unable to revoke security group %q Ingress, %v", *existSG.GroupId, err)
-// 		}
-// 	}
-
-// 	if len(existSG.IpPermissionsEgress) > 0 {
-// 		req := svc.RevokeSecurityGroupEgressRequest(&ec2.RevokeSecurityGroupEgressInput{
-// 			GroupId:       existSG.GroupId,
-// 			IpPermissions: existSG.IpPermissionsEgress,
-// 		})
-// 		_, err := req.Send(context.Background())
-// 		if err != nil {
-// 			exitErrorf("Unable to revoke security group %q Egress, %v", *existSG.GroupId, err)
-// 		}
-// 	}
-
-// 	log.Printf("Successfully update security group %q", *existSG.GroupId)
-
-// 	return existSG.GroupId
-// }
-
 func findIPPermissionsBySGID(sgList []ec2.SecurityGroup, groupID *string) (ipps []ec2.IpPermission, ippes []ec2.IpPermission) {
 	for _, sg := range sgList {
 		if aws.StringValue(sg.GroupId) == aws.StringValue(groupID) {
@@ -762,20 +740,6 @@ func (awssync *AWSSync) CreateAndSyncSGList(account *awsAuth, dryRun *bool) {
 	log.Print("Create Done.")
 }
 
-// func setSelfSecurityGroupID(ips []ec2.IpPermission, groupID *string) []ec2.IpPermission {
-// 	for i, ipp := range ips {
-// 		ugps := []ec2.UserIdGroupPair{}
-// 		for _, ugp := range ipp.UserIdGroupPairs {
-// 			if aws.StringValue(ugp.GroupId) == sgSelf {
-// 				ugp.GroupId = groupID
-// 				ugps = append(ugps, ugp)
-// 			}
-// 		}
-// 		ips[i].UserIdGroupPairs = ugps
-// 	}
-// 	return ips
-// }
-
 // CleanSecurityGroupRule ...
 func CleanSecurityGroupRule(account *awsAuth) {
 	c := askForConfirmation("Doooooooooooooooooooooooooooooooooooooon't, Are You Sure?")
@@ -825,4 +789,32 @@ func CleanSecurityGroupRule(account *awsAuth) {
 func exitErrorf(msg string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, msg+"\n", args...)
 	os.Exit(1)
+}
+
+// DiffSecurityGroup ...
+func DiffSecurityGroup(awsAccount *AWSAccount) {
+
+}
+
+func convertTf(sgList []ec2.SecurityGroup, tags *[]Tag) {
+	funcMap := template.FuncMap{
+		"now": time.Now,
+		"customTags": func() *[]Tag {
+			return tags
+		},
+	}
+
+	tmpl, err := template.New("security_groups.tmpl").Funcs(funcMap).ParseFiles("template/security_groups.tmpl")
+	if err != nil {
+		log.Fatalf("parsing: %s", err)
+	}
+	for _, sg := range sgList {
+		fmt.Println(sg)
+		err := tmpl.Execute(os.Stdout, sg)
+		if err != nil {
+			log.Fatalf("execution: %s", err)
+		}
+		fmt.Println(``)
+		fmt.Println(``)
+	}
 }

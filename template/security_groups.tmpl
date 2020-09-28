@@ -1,0 +1,48 @@
+resource "aws_security_group" "{{.GroupName}}" {
+    vpc_id      = "{{.VpcId}}"
+    name        = "{{.GroupName}}"
+    description = "{{.Description}}"
+
+    {{- range $i, $ipp := .IpPermissions}}
+    {{- range $ii, $ipr := .IpRanges}}
+    ingress {
+        from_port   = {{if not $ipp.FromPort}}0{{else}}{{$ipp.FromPort}}{{end}}
+        to_port     = {{if not $ipp.ToPort}}0{{else}}{{$ipp.ToPort}}{{end}}
+        protocol    = {{if not $ipp.IpProtocol}}"-1"{{else}}"{{$ipp.IpProtocol}}"{{end}}
+        cidr_blocks = ["{{.CidrIp}}"]
+        description = {{if not $ipr.Description}}nil{{else}}"{{$ipr.Description}}"{{end}}
+    }
+    {{- end}}
+    {{- range $ii, $ugp := .UserIdGroupPairs}}
+    ingress {
+        from_port       = {{if not $ipp.FromPort}}0{{else}}{{$ipp.FromPort}}{{end}}
+        to_port         = {{if not $ipp.ToPort}}0{{else}}{{$ipp.ToPort}}{{end}}
+        protocol        = {{if not $ipp.IpProtocol}}"-1"{{else}}"{{$ipp.IpProtocol}}"{{end}}
+        description     = {{if not $ugp.Description}}nil{{else}}"{{$ugp.Description}}"{{end}}
+        security_groups = "{{$ugp.GroupId}}"
+    }
+    {{- end}}
+    {{- end}}
+
+    {{- range $i, $ippe := .IpPermissionsEgress}}
+    {{- range $ii, $ipr := .IpRanges}}
+    egress {
+        from_port   = {{if not $ippe.FromPort}}0{{else}}{{$ippe.FromPort}}{{end}}
+        to_port     = {{if not $ippe.ToPort}}0{{else}}{{$ippe.ToPort}}{{end}}
+        protocol    = {{if not $ippe.IpProtocol}}"-1"{{else}}"{{$ippe.IpProtocol}}"{{end}}
+        cidr_blocks = ["{{.CidrIp}}"]
+        description = {{if not $ipr.Description}}nil{{else}}"{{$ipr.Description}}"{{end}}
+    }
+    {{- end}}
+    {{- end}}
+
+    tags = {
+        "CreateAt" = {{now}}
+    {{- range customTags}}
+        "{{.Key}}" = "{{.Value}}"
+    {{- end}}
+    {{- range .Tags}}
+        "{{.Key}}" = "{{.Value}}"
+    {{- end}}
+    }
+}

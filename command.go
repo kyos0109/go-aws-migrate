@@ -87,6 +87,15 @@ func CommnadRun() {
 						Usage:  "Restore Destination Security Group From File.",
 						Hidden: true,
 					},
+					&cli.BoolFlag{
+						Name:    "terraform-export",
+						Aliases: []string{"tf"},
+						Usage:   "Export terraform file, has to be used with export args.",
+					},
+					&cli.BoolFlag{
+						Name:  "diff",
+						Usage: "Compare source and destination security group.",
+					},
 				},
 			},
 			{
@@ -147,9 +156,9 @@ func handelSG(c *cli.Context) error {
 
 	switch {
 	case c.Bool("src-export"):
-		ExportSecurityGroupRule(&yamlConfig.Setting.Source, c.String("output"))
+		ExportSecurityGroupRule(&yamlConfig.Setting.Source, c.String("output"), c.Bool("terraform-export"), &yamlConfig.Setting.Tags)
 	case c.Bool("dst-export"):
-		ExportSecurityGroupRule(&yamlConfig.Setting.Destination, c.String("output"))
+		ExportSecurityGroupRule(&yamlConfig.Setting.Destination, c.String("output"), c.Bool("terraform-export"), &yamlConfig.Setting.Tags)
 	case c.Bool("src-restore"):
 		AlertRestoreMessage()
 		RestoreSecurityGroupRule(&yamlConfig.Setting.Source, c.String("file"))
@@ -161,6 +170,8 @@ func handelSG(c *cli.Context) error {
 		SecurityGroupSyncGO(&yamlConfig.Setting)
 	case c.Bool("DontTouchThisButton"):
 		CleanSecurityGroupRule(&yamlConfig.Setting.Destination)
+	case c.Bool("diff"):
+		DiffSecurityGroup(&yamlConfig.Setting)
 	default:
 		AlertCreateMessage()
 		SecurityGroupSyncGO(&yamlConfig.Setting)
