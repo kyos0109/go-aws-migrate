@@ -10,7 +10,9 @@ resource "aws_security_group" "{{.GroupName}}" {
         to_port     = {{if not $ipp.ToPort}}0{{else}}{{$ipp.ToPort}}{{end}}
         protocol    = {{if not $ipp.IpProtocol}}"-1"{{else}}"{{$ipp.IpProtocol}}"{{end}}
         cidr_blocks = ["{{.CidrIp}}"]
-        description = {{if not $ipr.Description}}nil{{else}}"{{$ipr.Description}}"{{end}}
+        {{- if $ipr.Description}}
+        description = "{{$ipr.Description}}"
+        {{- end}}
     }
     {{- end}}
     {{- range $ii, $ugp := .UserIdGroupPairs}}
@@ -18,8 +20,10 @@ resource "aws_security_group" "{{.GroupName}}" {
         from_port       = {{if not $ipp.FromPort}}0{{else}}{{$ipp.FromPort}}{{end}}
         to_port         = {{if not $ipp.ToPort}}0{{else}}{{$ipp.ToPort}}{{end}}
         protocol        = {{if not $ipp.IpProtocol}}"-1"{{else}}"{{$ipp.IpProtocol}}"{{end}}
-        description     = {{if not $ugp.Description}}nil{{else}}"{{$ugp.Description}}"{{end}}
-        security_groups = "{{$ugp.GroupId}}"
+        security_groups = ["{{$ugp.GroupId}}"]
+        {{- if $ugp.Description}}
+        description     = "{{$ugp.Description}}"
+        {{- end}}
     }
     {{- end}}
     {{- end}}
@@ -31,13 +35,15 @@ resource "aws_security_group" "{{.GroupName}}" {
         to_port     = {{if not $ippe.ToPort}}0{{else}}{{$ippe.ToPort}}{{end}}
         protocol    = {{if not $ippe.IpProtocol}}"-1"{{else}}"{{$ippe.IpProtocol}}"{{end}}
         cidr_blocks = ["{{.CidrIp}}"]
-        description = {{if not $ipr.Description}}nil{{else}}"{{$ipr.Description}}"{{end}}
+        {{- if $ipr.Description}}
+        description = "{{$ipr.Description}}"
+        {{- end}}
     }
     {{- end}}
     {{- end}}
 
     tags = {
-        "CreateAt" = {{now}}
+        "CreateAt" = "{{now}}"
     {{- range customTags}}
         "{{.Key}}" = "{{.Value}}"
     {{- end}}
