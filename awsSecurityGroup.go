@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"text/template"
 	"time"
@@ -804,7 +805,26 @@ func exitErrorf(msg string, args ...interface{}) {
 
 // DiffSecurityGroup ...
 func DiffSecurityGroup(awsAccount *AWSAccount) {
+	sourceSGList := GetSGList(&awsAccount.Source)
+	destinationSGList := GetSGList(&awsAccount.Destination)
 
+	if !reflect.DeepEqual(sourceSGList, destinationSGList) {
+		for _, ssg := range sourceSGList {
+			for _, dsg := range destinationSGList {
+				if aws.StringValue(ssg.GroupName) == aws.StringValue(dsg.GroupName) {
+					// fmt.Println(i, ii, aws.StringValue(ssg.GroupName), aws.StringValue(dsg.GroupName))
+					if !reflect.DeepEqual(ssg.IpPermissions, dsg.IpPermissions) {
+						log.Printf("Security Group Name: %s, Inbound Not Match", aws.StringValue(ssg.GroupName))
+					}
+					if !reflect.DeepEqual(ssg.IpPermissionsEgress, dsg.IpPermissionsEgress) {
+						log.Printf("Security Group Name: %s, Outbound  Not Match", aws.StringValue(ssg.GroupName))
+					}
+				}
+			}
+		}
+	} else {
+		log.Print("Security Group All Match.")
+	}
 }
 
 func convertTf(sgList []ec2.SecurityGroup, tags *[]Tag) *bytes.Buffer {
