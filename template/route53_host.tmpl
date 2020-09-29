@@ -1,0 +1,15 @@
+resource "aws_route53_zone" "{{hostName}}" {
+    name       = "{{.Name}}"
+    comment    = "{{.Config.Comment}}"
+
+    vpc {
+        vpc_id = "{{vpcID}}"
+    }
+
+    tags = {
+        "CreateAt" = "{{now}}"
+    {{- range customTags}}
+        "{{.Key}}" = "{{.Value}}"
+    {{- end}}
+    }
+}

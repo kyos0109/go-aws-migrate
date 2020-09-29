@@ -103,6 +103,41 @@ func CommnadRun() {
 				Aliases: []string{"r53"},
 				Usage:   "Route53 Migrate",
 				Action:  handelR53,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "src-export",
+						Usage: "Export Source Security Group To File.",
+					},
+					&cli.BoolFlag{
+						Name:  "dst-export",
+						Usage: "Export Destination Security Group To File.",
+					},
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Output File Location.",
+					},
+					&cli.StringFlag{
+						Name:    "file",
+						Aliases: []string{"f"},
+						Usage:   "Restore File Location.",
+					},
+					&cli.BoolFlag{
+						Name:   "src-restore",
+						Usage:  "Restore Source Security Group From File.",
+						Hidden: true,
+					},
+					&cli.BoolFlag{
+						Name:   "dst-restore",
+						Usage:  "Restore Destination Security Group From File.",
+						Hidden: true,
+					},
+					&cli.BoolFlag{
+						Name:    "terraform-export",
+						Aliases: []string{"tf"},
+						Usage:   "Export terraform to file, has to be used with export args.",
+					},
+				},
 			},
 			{
 				Name:    "VPC",
@@ -186,14 +221,21 @@ func handelR53(c *cli.Context) error {
 		return err
 	}
 
-	cc := askForConfirmation("Do you really want to do it ??")
+	switch {
+	case c.Bool("src-export"):
+		ExportRoute53Record(&yamlConfig.Setting.Source, c.String("output"), c.Bool("terraform-export"), &yamlConfig.Setting.Tags)
+	case c.Bool("dst-export"):
+		ExportRoute53Record(&yamlConfig.Setting.Destination, c.String("output"), c.Bool("terraform-export"), &yamlConfig.Setting.Tags)
+	default:
+		cc := askForConfirmation("Do you really want to do it ??")
 
-	if !cc {
-		fmt.Println("Bye...")
-		os.Exit(0)
+		if !cc {
+			fmt.Println("Bye...")
+			os.Exit(0)
+		}
+
+		Route53SyncGO(&yamlConfig.Setting)
 	}
-
-	Route53SyncGO(&yamlConfig.Setting)
 
 	return nil
 }

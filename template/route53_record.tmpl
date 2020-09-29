@@ -1,0 +1,7 @@
+resource "aws_route53_record" "{{convertPeriod .Name}}" {
+    zone_id = "aws_route53_zone.{{hostName}}.zone_id"
+    name    = "{{.Name}}"
+    type    = "{{.Type}}"
+    records = {{- range $i, $value := .ResourceRecords}} [ "{{$value.Value}}" {{if gt $i 0}}, {{- end}}]{{- end}}
+    ttl     = {{.TTL}}
+}

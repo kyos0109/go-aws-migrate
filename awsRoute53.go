@@ -1,10 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -187,4 +194,115 @@ func Route53SyncGO(awsAccount *AWSAccount) {
 	}
 
 	log.Print("Done.")
+}
+
+// ExportRoute53Record ...
+func ExportRoute53Record(account *awsAuth, filePath string, tf bool, tags *[]Tag) {
+	var (
+		err  error
+		buff []byte
+	)
+
+	fileName := "Route53-" + time.Now().Format("20060102150405")
+
+	if tf {
+		fileName = fileName + ".tf"
+	} else {
+		fileName = fileName + ".json"
+	}
+
+	if len(filePath) > 0 {
+		filePath = filepath.Clean(filePath)
+
+		var splitWord string
+		switch runtime.GOOS {
+		case "darwin", "linux":
+			splitWord = `/`
+		case "windows":
+			splitWord = `\`
+		default:
+			splitWord = `/`
+		}
+
+		filePath = filePath + splitWord
+	}
+
+	recordListRes, hostedZone := getDNSRecordList(account)
+
+	if tf {
+		buff, err = ioutil.ReadAll(convertR53Tf(recordListRes, hostedZone, tags, account.VIPCID))
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+	} else {
+		buff, err = json.Marshal(hostedZone)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+		buff, err = json.Marshal(recordListRes)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+	}
+
+	err = ioutil.WriteFile(filePath+fileName, buff, 0644)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+	log.Printf("Output File: %s, Export Done.", filePath+fileName)
+}
+
+func convertR53Tf(
+	r53res *route53.ListResourceRecordSetsResponse,
+	r53Host *route53.HostedZone,
+	tags *[]Tag, vpcID string) *bytes.Buffer {
+
+	funcMap := template.FuncMap{
+		"now": time.Now,
+		"customTags": func() *[]Tag {
+			return tags
+		},
+		"vpcID": func() string {
+			return vpcID
+		},
+		"hostName": func() string {
+			return strings.TrimSuffix(strings.Replace(*r53Host.Name, ".", "-", -1), "-")
+		},
+		"convertPeriod": func(period string) string {
+			return strings.TrimSuffix(strings.Replace(period, ".", "-", -1), "-")
+		},
+	}
+
+	hostTmpl, err := template.New("route53_host.tmpl").Funcs(funcMap).ParseFiles("template/route53_host.tmpl")
+	if err != nil {
+		log.Fatalf("parsing: %s", err)
+	}
+	buf := &bytes.Buffer{}
+
+	err = hostTmpl.Execute(buf, r53Host)
+	if err != nil {
+		log.Fatalf("execution: %s", err)
+	}
+	buf.WriteString("\n")
+
+	recordTmpl, err := template.New("route53_record.tmpl").Funcs(funcMap).ParseFiles("template/route53_record.tmpl")
+	for _, record := range r53res.ResourceRecordSets {
+		if record.Type == route53.RRTypeNs || record.Type == route53.RRTypeSoa {
+			continue
+		}
+
+		buf.WriteString("\n")
+
+		err = recordTmpl.Execute(buf, record)
+		if err != nil {
+			log.Fatalf("execution: %s", err)
+		}
+		buf.WriteString("\n")
+	}
+	return buf
 }
