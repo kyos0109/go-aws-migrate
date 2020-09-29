@@ -16,6 +16,8 @@ The command migrate the aws some services to another aws account.
 
 * Support Route53.
 
+* Support Route53 Export Terraform.
+
 
 # Command
 ```bash
